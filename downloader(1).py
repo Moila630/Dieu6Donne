@@ -1,17 +1,33 @@
 import os
 import logging
+from flask import Flask
+from threading import Thread
 from yt_dlp import YoutubeDL, utils as ytdlp_utils
 from telegram import Update, InputFile
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
 
-# ✅ Ton token (remplace si besoin)
-TOKEN = "7922618318:AAFeTFXCnfVNLj6xuWQIoIBh73IPhAhutwc"
+# 🔐 Token depuis variables d’environnement (plus sécurisé)
+TOKEN = os.environ.get("BOT_TOKEN", "7922618318:AAFeTFXCnfVNLj6xuWQIoIBh73IPhAhutwc")  # remplace ici si besoin
 
-# 🔧 Log setup
+# 🔧 Logger
 logging.basicConfig(format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# 📥 Fonction de téléchargement TikTok vidéo
+# 🔁 Keep Alive intégré
+app = Flask('')
+
+@app.route('/')
+def home():
+    return "✅ Le bot TikTok est en ligne."
+
+def run():
+    app.run(host='0.0.0.0', port=3000)
+
+def keep_alive():
+    t = Thread(target=run)
+    t.start()
+
+# 📥 Fonction téléchargement TikTok
 def download_video(url, chat_id):
     ydl_opts = {
         "outtmpl": f"{chat_id}_%(title).50s.%(ext)s",
@@ -32,17 +48,15 @@ def download_video(url, chat_id):
         info = ydl.extract_info(url, download=True)
         return ydl.prepare_filename(info)
 
-# 🎯 Réponse à un message texte
+# 🎯 Message texte reçu
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
     url = update.message.text.strip()
 
-    # Vérifie que c'est un lien TikTok
     if "tiktok.com" not in url:
         await update.message.reply_text("❌ Je ne supporte actuellement que les vidéos TikTok.")
         return
 
-    # Téléchargement vidéo
     try:
         await update.message.reply_text("⏳ Téléchargement de la vidéo TikTok en cours...")
         filename = download_video(url, chat_id)
@@ -71,8 +85,9 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("👋 Envoie-moi un lien TikTok pour télécharger une vidéo.")
 
-# ▶️ Lancement du bot
+# ▶️ Lancement principal
 def main():
+    keep_alive()
     app = ApplicationBuilder().token(TOKEN).build()
     app.add_handler(CommandHandler("start", start))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
