@@ -1,22 +1,33 @@
 import os
 import logging
-from flask import Flask, request
+from flask import Flask
 from threading import Thread
 from yt_dlp import YoutubeDL, utils as ytdlp_utils
-from telegram import Update
+from telegram import Update, InputFile
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
 
-# 🔐 Token depuis variables d’environnement
-TOKEN = os.environ.get("7922618318:AAFeTFXCnfVNLj6xuWQIoIBh73IPhAhutwc", "TON_TOKEN_ICI")
+# 🔐 Token depuis variables d’environnement (plus sécurisé)
+TOKEN = os.environ.get("BOT_TOKEN", "7922618318:AAFeTFXCnfVNLj6xuWQIoIBh73IPhAhutwc")  # remplace ici si besoin
 
-# Logger
+# 🔧 Logger
 logging.basicConfig(format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Flask app
-app = Flask(__name__)
+# 🔁 Keep Alive intégré
+app = Flask('')
 
-# Fonction téléchargement vidéo TikTok
+@app.route('/')
+def home():
+    return "✅ Le bot TikTok est en ligne."
+
+def run():
+    app.run(host='0.0.0.0', port=3000)
+
+def keep_alive():
+    t = Thread(target=run)
+    t.start()
+
+# 📥 Fonction téléchargement TikTok
 def download_video(url, chat_id):
     ydl_opts = {
         "outtmpl": f"{chat_id}_%(title).50s.%(ext)s",
@@ -37,11 +48,7 @@ def download_video(url, chat_id):
         info = ydl.extract_info(url, download=True)
         return ydl.prepare_filename(info)
 
-# Commande /start
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("👋 Envoie-moi un lien TikTok pour télécharger une vidéo.")
-
-# Handler message texte
+# 🎯 Message texte reçu
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
     url = update.message.text.strip()
@@ -51,11 +58,11 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     try:
-        await update.message.reply_text("⏳ Téléchargement en cours...")
+        await update.message.reply_text("⏳ Téléchargement de la vidéo TikTok en cours...")
         filename = download_video(url, chat_id)
 
         if not os.path.exists(filename):
-            await update.message.reply_text("❌ Fichier introuvable après téléchargement.")
+            await update.message.reply_text("❌ Le fichier n'a pas été trouvé.")
             return
 
         size = os.path.getsize(filename)
@@ -74,35 +81,18 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logger.error(f"Erreur inattendue : {e}")
         await update.message.reply_text("❌ Une erreur est survenue pendant le téléchargement.")
 
-# Création de l'application Telegram
-application = ApplicationBuilder().token(TOKEN).build()
-application.add_handler(CommandHandler("start", start))
-application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+# 🟢 Commande /start
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("👋 Envoie-moi un lien TikTok pour télécharger une vidéo.")
 
-# Route webhook Flask
-@app.route(f"/{TOKEN}", methods=["POST"])
-async def webhook():
-    json_data = request.get_json(force=True)
-    update = Update.de_json(json_data, application.bot)
-    await application.process_update(update)
-    return "ok"
-
-# Route simple test HTTP
-@app.route("/")
-def home():
-    return "✅ Bot TikTok en ligne"
+# ▶️ Lancement principal
+def main():
+    keep_alive()
+    app = ApplicationBuilder().token(TOKEN).build()
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+    logger.info("🚀 Bot TikTok lancé avec succès.")
+    app.run_polling()
 
 if __name__ == "__main__":
-    # On met en place le webhook sur Telegram
-    WEBHOOK_URL = os.environ.get("WEBHOOK_URL")  # Exemple: "https://tondomaine.com/" + TOKEN
-    if not WEBHOOK_URL:
-        logger.error("Variable WEBHOOK_URL non définie, arrêt du bot.")
-        exit(1)
-
-    # Supprime webhook si existant (sécurité)
-    application.bot.delete_webhook()
-    # Définir le webhook sur Telegram
-    application.bot.set_webhook(WEBHOOK_URL)
-
-    # Lancement serveur Flask
-    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 3000)))
+    main()
